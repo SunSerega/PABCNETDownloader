@@ -14,8 +14,9 @@ var
 var
   y := 0;
   wc := new System.Net.WebClient;
-  pst_done := 0.0;
-  pst_err := 0.0;
+  file_pst: real;
+  pst_done: real;
+  pst_err: real;
   comp := false;
 
 procedure AddOtp(s: string);
@@ -39,44 +40,42 @@ type
   InstallableElement = abstract class
     
     from, &to: string;
-    pst: real;
     last_err:Exception;
     
-    procedure ResetValue(n_pst:real); virtual :=
-    pst := n_pst;
+    function GetFileCount:integer; abstract;
     
-    function GetValue:real; virtual :=
-    pst;
-    
-    function Install: sequence of InstallableElement; abstract;
+    function Install: List<InstallableElement>; abstract;
   
   end;
   
   InstallableFile = class(InstallableElement)
     
-    function Install: sequence of InstallableElement; override;
+    function Install: List<InstallableElement>; override;
     begin
       try
         System.IO.File.Delete(&to);
         System.IO.File.Copy(from, &to);
+        
         if System.IO.Path.GetExtension(&to) = '.exe' then
           System.Diagnostics.Process.Start($'{ExecHideFile}',$'{PreCompileFile} install {&to}');//.WaitForExit;
         if System.IO.Path.GetExtension(&to) = '.dll' then
           System.Diagnostics.Process.Start($'{ExecHideFile}',$'{AddToGACFile} /i {&to}');//.WaitForExit;
-        Result := new InstallableElement[0];
+        
+        Result := new List<InstallableElement>(0);
       except
         on e: Exception do
         begin
-          //AddOtp(e.ToString);
           self.last_err := e;
-          Result := new InstallableElement[](self);
-          //pst_done += pst;
-          pst_err += pst;
+          Result := new List<InstallableElement>(1);
+          Result.Add(self);
+          pst_err += file_pst;
         end;
       end;
-      pst_done += pst;
-      //AddOtp($'res file: {Result<>nil}');
+      pst_done += file_pst;
     end;
+    
+    function GetFileCount:integer; override :=
+    1;
     
     constructor(from, &to: string);
     begin
@@ -94,55 +93,38 @@ type
   end;
   InstallableFolder = class(InstallableElement)
     
-    Elements: sequence of InstallableElement;
+    Elements := new List<InstallableElement>;
     
-    function Install: sequence of InstallableElement; override;
+    function Install: List<InstallableElement>; override;
     begin
       try
         Result := InstallBody;
       except
         on e: Exception do
         begin
-          //AddOtp(e.ToString);
           self.last_err := e;
-          Result := new InstallableElement[](self);
+          Result := new List<InstallableElement>(1);
+          Result.Add(self);
+          var pst := file_pst * self.GetFileCount;
           pst_done += pst;
           pst_err += pst;
         end;
       end;
-      //AddOtp($'res dir: {Result<>nil}');
     end;
     
-    function InstallBody: sequence of InstallableElement;
+    function InstallBody: List<InstallableElement>;
     begin
+      Result := new List<InstallableElement>;
+      
       System.IO.Directory.CreateDirectory(&to);
-      //var res := new List<InstallableElement>;
       
-      var enm := Elements.GetEnumerator;
-      if enm.MoveNext then
-      begin
-        yield sequence enm.Current.Install;
-        //res.AddRange(enm.Current.Install);
-        while enm.MoveNext do
-          yield sequence enm.Current.Install;
-          //res.AddRange(enm.Current.Install);
-      end else
-        pst_done += pst;
+      foreach var el in Elements do
+        Result.AddRange(el.Install);
       
-      //Result := res;
     end;
     
-    procedure ResetValue(n_pst:real); override;
-    begin
-      //inherited ResetValue(n_pst);
-      pst := n_pst;
-      var elm := Elements.ToArray;
-      elm.ForEach(procedure(el)->el.ResetValue(n_pst/elm.Length));
-      Elements := elm;
-    end;
-    
-    function GetValue:real; override :=
-    Elements.Select(el->el.GetValue).Sum;
+    function GetFileCount:integer; override :=
+    Elements.Select(el->el.GetFileCount).Sum;
     
     function GetElements: sequence of InstallableElement :=
     System.IO.Directory.EnumerateDirectories(from).Select(dir -> InstallableElement(
@@ -162,7 +144,7 @@ type
     begin
       self.from := from;
       self.to := &to;
-      Elements := GetElements;
+      Elements := GetElements.ToList;
     end;
     
     public function ToString: string; override;
@@ -175,7 +157,7 @@ type
   end;
 
 var
-  FailedToInstall: array of InstallableElement;
+  FailedToInstall: List<InstallableElement>;
 
 procedure Подготовка;
 begin
@@ -224,16 +206,19 @@ begin
   System.IO.File.Delete(TempFile);
 end;
 
-procedure Установка(installing:array of InstallableElement);
+procedure Установка(installing:List<InstallableElement>);
 begin
   AddOtp($'Устанавливаю');
-  installing.ForEach(procedure(el)->el.ResetValue(1/installing.Length));
-  //AddOtp($'Всего {installing.Select(el->el.GetValue).Sum*100}%');
+  FailedToInstall := new List<InstallableElement>;
+  file_pst := 1/installing.Select(el->el.GetFileCount).Sum;
   pst_done := 0;
+  pst_err := 0;
   comp := false;
   var thr := new System.Threading.Thread(()->
   begin
-    FailedToInstall := installing.SelectMany(el->el.Install).ToArray;
+    foreach var el in installing do
+      FailedToInstall.AddRange(el.Install);
+    
     comp := true;
   end);
   thr.Start;
@@ -298,16 +283,16 @@ begin
         as InstallableElement
       )
       
-    ).ToArray);
-    if try2 and (FailedToInstall.Length <> 0) then
+    ).ToList);
+    if try2 and (FailedToInstall.Count <> 0) then
     begin
       ОжиданиеЗакрытияПаскаля;
       Установка(FailedToInstall);
     end;
     
-    if FailedToInstall.Length <> 0 then
+    if FailedToInstall.Count <> 0 then
     begin
-      AddOtp($'{FailedToInstall.Length} элементов не было установлено:');
+      AddOtp($'{FailedToInstall.Select(el->el.GetFileCount).Sum} файлов не было установлено:');
       FailedToInstall.PrintLines;
       readln;
     end;
