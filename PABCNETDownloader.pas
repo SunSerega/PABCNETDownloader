@@ -18,6 +18,8 @@ var
   pst_done: real;
   pst_err: real;
   comp := false;
+  
+  procs_alive:sequence of System.Diagnostics.Process := new System.Diagnostics.Process[0];
 
 procedure AddOtp(s: string);
 begin
@@ -57,9 +59,9 @@ type
         System.IO.File.Copy(from, &to);
         
         if System.IO.Path.GetExtension(&to) = '.exe' then
-          System.Diagnostics.Process.Start($'{ExecHideFile}',$'{PreCompileFile} install {&to}');//.WaitForExit;
+          procs_alive := procs_alive + System.Diagnostics.Process.Start($'{ExecHideFile}',$'{PreCompileFile} install {&to}');//.WaitForExit;
         if System.IO.Path.GetExtension(&to) = '.dll' then
-          System.Diagnostics.Process.Start($'{ExecHideFile}',$'{AddToGACFile} /i {&to}');//.WaitForExit;
+          procs_alive := procs_alive + System.Diagnostics.Process.Start($'{ExecHideFile}',$'{AddToGACFile} /i {&to}');//.WaitForExit;
         
         Result := new List<InstallableElement>(0);
       except
@@ -295,6 +297,13 @@ begin
       AddOtp($'{FailedToInstall.Select(el->el.GetFileCount).Sum} файлов не было установлено:');
       FailedToInstall.PrintLines;
       readln;
+    end;
+    
+    AddOtp('Жду окончания установочных процедур');
+    while procs_alive.Any do
+    begin
+      procs_alive := procs_alive.Where(p->not p.HasExited).ToArray;
+      Sleep(10);
     end;
     
     AddOtp('Удаляю папку в которую распоковывал');
