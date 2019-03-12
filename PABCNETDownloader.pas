@@ -2,14 +2,14 @@
 
 const
   PABCFile = 'http://pascalabc.net/downloads/PascalABCNETSetup.exe';
-  TempFolder = System.IO.Path.GetTempPath + 'PABCInstallerTemp';
   
-  ExecHideFile = TempFolder + '\ExecHide.exe';
-  PreCompileFile = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\ngen.exe';
-  AddToGACFile = TempFolder + '\gacutil.exe';
 
 var
-  TempFile := System.IO.Path.GetTempFileName();
+  TempFolder := System.IO.Path.GetTempPath + 'PABCInstallerTemp';
+  ExecHideFile := TempFolder + '\ExecHide.exe';
+  PreCompileFile := 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\ngen.exe';
+  AddToGACFile := TempFolder + '\gacutil.exe';
+  TempFile := System.IO.Path.GetTempFileName;
 
 var
   y := 0;
@@ -19,14 +19,12 @@ var
   pst_err: real;
   comp := false;
   
-  procs_alive:sequence of System.Diagnostics.Process := new System.Diagnostics.Process[0];
+  procs_alive := new List<System.Diagnostics.Process>;
 
 procedure AddOtp(s: string);
 begin
   System.Console.SetCursorPosition(0, y);
-  writeln(' ' * System.Console.WindowWidth);
-  System.Console.SetCursorPosition(0, y);
-  writeln(s);
+  write(s, ' ' * (System.Console.WindowWidth-s.Length) );
   y += 1;
 end;
 
@@ -58,10 +56,8 @@ type
         System.IO.File.Delete(&to);
         System.IO.File.Copy(from, &to);
         
-        if System.IO.Path.GetExtension(&to) = '.exe' then
-          procs_alive := procs_alive + System.Diagnostics.Process.Start($'{ExecHideFile}',$'{PreCompileFile} install {&to}');//.WaitForExit;
-        if System.IO.Path.GetExtension(&to) = '.dll' then
-          procs_alive := procs_alive + System.Diagnostics.Process.Start($'{ExecHideFile}',$'{AddToGACFile} /i {&to}');//.WaitForExit;
+        if System.IO.Path.GetExtension(&to) = '.exe' then procs_alive += System.Diagnostics.Process.Start($'{ExecHideFile}',$'{PreCompileFile} install {&to}');//.WaitForExit;
+        if System.IO.Path.GetExtension(&to) = '.dll' then procs_alive += System.Diagnostics.Process.Start($'{ExecHideFile}',$'{AddToGACFile} /i {&to}');//.WaitForExit;
         
         Result := new List<InstallableElement>(0);
       except
@@ -238,7 +234,7 @@ begin
   var pas_proc := System.Diagnostics.Process.GetProcessesByName('PascalABCNET');
   if pas_proc.Length <> 0 then
   begin
-    AddOtp($'не удалось установить {pst_err*100}%');
+    AddOtp($'не удалось установить {pst_err:P}');
     AddOtp($'закройте паскаль, чтоб установить остальное');
     while pas_proc.Length <> 0 do
     begin
@@ -253,77 +249,62 @@ begin
   
   try
     
-    if (CommandLineArgs.Length=1) and (CommandLineArgs[0]='SkipUAC') then
+    Подготовка;
+    Скачивание;
+    Распаковка;
+    var try2 := System.Diagnostics.Process.GetProcessesByName('PascalABCNET').Length <> 0;
+    Установка((
+      
+      System.IO.Directory.EnumerateDirectories(TempFolder)
+      .Select(fname->System.IO.Path.GetFileName(fname))
+      .Where(dir->not dir.StartsWith('$'))
+      .Select(dir->InstallableElement(new InstallableFolder($'{TempFolder}\{dir}',$'C:\Program Files (x86)\PascalABC.NET\{dir}')))
+      +
+      System.IO.Directory.EnumerateFiles(TempFolder)
+      .Select(fname->System.IO.Path.GetFileName(fname))
+      //.Where(fname->fname<>'pabcworknet.ini')
+      //.Where(fname->fname<>'gacutlrc.dll')
+      //.Where(fname->fname<>'gacutil.exe.config')
+      .Where(fname->System.IO.Path.GetExtension(fname) = '.exe')
+      .Select(fname->InstallableElement(new InstallableFile($'{TempFolder}\{fname}',$'C:\Program Files (x86)\PascalABC.NET\{fname}')))
+      +
+      System.IO.Directory.EnumerateFiles(TempFolder)
+      .Select(fname->System.IO.Path.GetFileName(fname))
+      .Where(fname->fname<>'pabcworknet.ini')
+//      .Where(fname->fname<>'gacutlrc.dll')
+//      .Where(fname->fname<>'gacutil.exe.config')
+      .Where(fname->System.IO.Path.GetExtension(fname) <> '.exe')
+      .Select(fname->InstallableElement(new InstallableFile($'{TempFolder}\{fname}',$'C:\Program Files (x86)\PascalABC.NET\{fname}')))
+      +
+      (
+        new InstallableFolder($'{TempFolder}\$_1_\Samples','C:\PABCWork.NET\Samples')
+        as InstallableElement
+      )
+      
+    ).ToList);
+    if try2 and (FailedToInstall.Count <> 0) then
     begin
-      
-      Подготовка;
-      Скачивание;
-      Распаковка;
-      var try2 := System.Diagnostics.Process.GetProcessesByName('PascalABCNET').Length <> 0;
-      Установка((
-        
-        System.IO.Directory.EnumerateDirectories(TempFolder)
-        .Select(fname->System.IO.Path.GetFileName(fname))
-        .Where(dir->not dir.StartsWith('$'))
-        .Select(dir->InstallableElement(new InstallableFolder($'{TempFolder}\{dir}',$'C:\Program Files (x86)\PascalABC.NET\{dir}')))
-        +
-        System.IO.Directory.EnumerateFiles(TempFolder)
-        .Select(fname->System.IO.Path.GetFileName(fname))
-        //.Where(fname->fname<>'pabcworknet.ini')
-        //.Where(fname->fname<>'gacutlrc.dll')
-        //.Where(fname->fname<>'gacutil.exe.config')
-        .Where(fname->System.IO.Path.GetExtension(fname) = '.exe')
-        .Select(fname->InstallableElement(new InstallableFile($'{TempFolder}\{fname}',$'C:\Program Files (x86)\PascalABC.NET\{fname}')))
-        +
-        System.IO.Directory.EnumerateFiles(TempFolder)
-        .Select(fname->System.IO.Path.GetFileName(fname))
-        .Where(fname->fname<>'pabcworknet.ini')
-        .Where(fname->fname<>'gacutlrc.dll')
-        .Where(fname->fname<>'gacutil.exe.config')
-        .Where(fname->System.IO.Path.GetExtension(fname) <> '.exe')
-        .Select(fname->InstallableElement(new InstallableFile($'{TempFolder}\{fname}',$'C:\Program Files (x86)\PascalABC.NET\{fname}')))
-        +
-        (
-          new InstallableFolder($'{TempFolder}\$_1_\Samples','C:\PABCWork.NET\Samples')
-          as InstallableElement
-        )
-        
-      ).ToList);
-      if try2 and (FailedToInstall.Count <> 0) then
-      begin
-        ОжиданиеЗакрытияПаскаля;
-        Установка(FailedToInstall);
-      end;
-      
-      if FailedToInstall.Count <> 0 then
-      begin
-        AddOtp($'{FailedToInstall.Select(el->el.GetFileCount).Sum} файлов не было установлено:');
-        FailedToInstall.PrintLines;
-        readln;
-      end;
-      
-      AddOtp('Жду окончания установочных процедур');
-      while procs_alive.Any do
-      begin
-        procs_alive := procs_alive.Where(p->not p.HasExited).ToArray;
-        Sleep(10);
-      end;
-      
-      AddOtp('Удаляю папку в которую распоковывал');
-      DeleteFolder(TempFolder);
-      
-    end else
-    begin
-      var startInfo := new System.Diagnostics.ProcessStartInfo();
-      startInfo.UseShellExecute := true;
-      startInfo.WorkingDirectory := System.Environment.CurrentDirectory;
-      {$reference System.Windows.Forms.dll}
-      startInfo.FileName := System.Windows.Forms.Application.ExecutablePath;
-      startInfo.Verb := 'runas';
-      startInfo.Arguments := 'SkipUAC';
-      System.Diagnostics.Process.Start(startInfo);
-      Halt;
+      ОжиданиеЗакрытияПаскаля;
+      Установка(FailedToInstall);
     end;
+    
+    if FailedToInstall.Count <> 0 then
+    begin
+      AddOtp($'{FailedToInstall.Select(el->el.GetFileCount).Sum} файлов не было установлено:');
+      FailedToInstall.PrintLines;
+      readln;
+    end;
+    
+    AddOtp('Жду окончания установочных процедур');
+    while procs_alive.Any do
+    begin
+      procs_alive.RemoveAll(p->p.HasExited);
+      Sleep(10);
+    end;
+    
+    AddOtp('Удаляю папку в которую распоковывал');
+    DeleteFolder(TempFolder);
+    
   except
     on e: System.Exception do
     begin
