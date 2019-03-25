@@ -159,6 +159,7 @@ var
 
 procedure Подготовка;
 begin
+  System.Console.CursorVisible := false;
   AddOtp('подготовка');
   System.IO.File.Delete(TempFile);
   wc.DownloadProgressChanged += procedure(o, e)-> pst_done := e.BytesReceived / e.TotalBytesToReceive;
