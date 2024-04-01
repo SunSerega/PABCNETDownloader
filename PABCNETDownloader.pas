@@ -1,9 +1,10 @@
 ﻿program downloader;
 
 const
-  PABCFile = 'http://pascalabc.net/downloads/PascalABCNETSetup.exe';
+//  PABCFile = 'https://pascalabc.net/downloads/PascalABCNETSetup.exe';
+//  PABCFile = 'http://it.mmcs.sfedu.ru/downloads/PABC/PascalABCNETSetup.exe';
+  PABCFile = 'https://github.com/SunSerega/pascalabcnet/releases/download/custom-build-tag/PascalABCNETSetup.exe';
   
-
 var
   TempFolder := System.IO.Path.GetTempPath + 'PABCInstallerTemp';
   ExecHideFile := TempFolder + '\ExecHide.exe';
@@ -18,6 +19,7 @@ var
   pst_done: real;
   pst_err: real;
   comp := false;
+  wc_err := default(Exception);
   
   procs_alive := new List<System.Diagnostics.Process>;
 
@@ -162,8 +164,13 @@ begin
   System.Console.CursorVisible := false;
   AddOtp('подготовка');
   System.IO.File.Delete(TempFile);
+  System.Net.ServicePointManager.SecurityProtocol := System.Net.SecurityProtocolType.Tls12;
   wc.DownloadProgressChanged += procedure(o, e)-> pst_done := e.BytesReceived / e.TotalBytesToReceive;
-  wc.DownloadFileCompleted += procedure(o, e)-> comp := true;
+  wc.DownloadFileCompleted += procedure(o, e)->
+  begin
+    comp := true;
+    wc_err := e.Error;
+  end;
 end;
 
 procedure Скачивание;
@@ -176,6 +183,9 @@ begin
     y -= 1;
     Sleep(10);
   end;
+  if wc_err<>nil then
+    raise wc_err;
+  System.IO.File.Copy(TempFile, System.Environment.GetEnvironmentVariable('USERPROFILE')+'\Desktop\PascalABCNETSetup.exe', true);
 end;
 
 procedure DestroyWindow(ptr:System.IntPtr);
@@ -249,6 +259,7 @@ end;
 begin
   
   try
+    Console.OutputEncoding := Encoding.UTF8;
     
     Подготовка;
     Скачивание;
